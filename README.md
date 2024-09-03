@@ -1,0 +1,1 @@
+Code to check the Joint Child Malnutrition Estimates Country Profiles pdf's. The code extracts data from the pdf tables and compares against output data stored in Excel; the code checks if the export to pdf worked without error. For now, code runs locally and users need to change file paths to run.  
