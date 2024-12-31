@@ -1,0 +1,62 @@
+import os
+import pdfplumber
+import pandas as pd
+
+def extract_data_from_pdf(pdf_path):
+    table_data = []
+    extract_flag = False
+    
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if "Table I – Joint Malnutrition Wasting Estimates for SDG Reporting:" in text:
+                extract_flag = True
+            
+            if extract_flag:
+                table = page.extract_table()
+                if table:
+                    table_data.extend(table)
+                    
+            if extract_flag and "a Estimate types are defined as:" in text:
+                break  # Stop after the relevant section ends
+    
+    # Extract specific columns (Year, Prevalence, Lower Bound, Upper Bound)
+    extracted_data = []
+    for row in table_data:
+        if len(row) >= 7:  # Ensure the row has enough columns
+            year = row[1]
+            prevalence = row[4]
+            lower_bound = row[5]
+            upper_bound = row[6]
+            if year and prevalence:  # Ensure there's meaningful data
+                extracted_data.append([year, prevalence, lower_bound, upper_bound])
+    
+    return extracted_data
+
+def extract_data_from_pdfs_in_folder(folder_path):
+    all_data = []
+    
+    # Iterate over all PDF files in the folder
+    for filename in os.listdir(folder_path):
+        if filename.endswith(".pdf"):
+            pdf_path = os.path.join(folder_path, filename)
+            pdf_data = extract_data_from_pdf(pdf_path)
+            if pdf_data:  # Only add if there is data
+                for data_row in pdf_data:
+                    all_data.append([filename] + data_row)
+    
+    # Convert to DataFrame
+    df = pd.DataFrame(all_data, columns=["Filename", "Year", "Prevalence (%)", "Lower Bound", "Upper Bound"])
+    return df
+
+# Specify the folder containing your PDFs
+folder_path = r'C:\Users\joelc\UNICEF\Data and Analytics Nutrition - Working Space\0. CURRENT\JME\JME profile check\PDFs' 
+
+# Extract data
+df = extract_data_from_pdfs_in_folder(folder_path)
+
+# Save to CSV or Excel if needed
+df.to_csv(r'C:\Users\joelc\UNICEF\Data and Analytics Nutrition - Working Space\0. CURRENT\JME\JME profile check\JME check\extracted_data.csv', index=False)
+
+
+print(df)
