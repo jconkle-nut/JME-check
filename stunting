@@ -1,0 +1,114 @@
+
+
+import pandas as pd
+import PyPDF2
+import re
+import os
+import glob
+
+# Load the Excel file
+excel_path = r'C:\Users\joelc\UNICEF\Data and Analytics Nutrition - Working Space\0. CURRENT\JME\JME profile check\DATA\T2_Stunting_Model_Outputs.xlsx'
+df = pd.read_excel(excel_path, sheet_name='Sheet1')
+
+# Get a list of unique country codes in the Excel file
+country_codes = df['MNF_Country_Code'].unique()
+
+# Directory where PDF files are stored
+pdf_dir = r'C:\Users\joelc\UNICEF\Data and Analytics Nutrition - Working Space\0. CURRENT\JME\JME profile check\PDFs'  # Update this path based on where the PDF files are located
+
+# Define the columns to compare
+comparison_columns = {
+    'PointEstimateOverall': 'Nat_Estimate',
+    'LowerLimitOverall': 'Nat_Lower',
+    'UpperLimitOverall': 'Nat_Upper',
+    'PointEstimateMale': 'Boys_Estimate',
+    'LowerLimitMale': 'Boys_Lower',
+    'UpperLimitMale': 'Boys_Upper',
+    'PointEstimateFemale': 'Girls_Estimate',
+    'LowerLimitFemale': 'Girls_Lower',
+    'UpperLimitFemale': 'Girls_Upper'
+}
+
+# Initialize a dictionary to store the results
+all_comparison_results = {}
+all_match = True  # Flag to track if all data matches
+
+# Iterate over each country code
+for country_code in country_codes:
+    # Filter the Excel data for the current country
+    df_country = df[df['MNF_Country_Code'] == country_code]
+    df_country.reset_index(drop=True, inplace=True)
+    
+    # Find the correct PDF filename for the country code
+    pdf_pattern = os.path.join(pdf_dir, f"{country_code}*JME_Estimates_en.pdf")
+    pdf_files = glob.glob(pdf_pattern)
+    
+    if pdf_files:
+        pdf_path = pdf_files[0]  # Take the first matching file
+        
+        # Extract text from the second page of the PDF
+        with open(pdf_path, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            page_2_text = reader.pages[1].extract_text()
+        
+        # Regex to match the data patterns in the extracted text
+        pattern = re.compile(r"(\d{4})\s+(\d{1,2}\.\d)\s+(\d{1,2}\.\d)\s+(\d{1,2}\.\d)\s+(\d{1,2}\.\d)\s+(\d{1,2}\.\d)\s+(\d{1,2}\.\d)\s+(\d{1,2}\.\d)\s+(\d{1,2}\.\d)\s+(\d{1,2}\.\d)")
+        
+        matches = pattern.findall(page_2_text)
+        
+        # Create a DataFrame from the matched data
+        pdf_data = pd.DataFrame(matches, columns=[
+            'Year', 'Nat_Lower', 'Nat_Estimate', 'Nat_Upper', 
+            'Boys_Lower', 'Boys_Estimate', 'Boys_Upper', 
+            'Girls_Lower', 'Girls_Estimate', 'Girls_Upper'
+        ])
+        
+        # Convert the Year and estimate columns to appropriate data types
+        pdf_data = pdf_data.astype({
+            'Year': int,
+            'Nat_Lower': float,
+            'Nat_Estimate': float,
+            'Nat_Upper': float,
+            'Boys_Lower': float,
+            'Boys_Estimate': float,
+            'Boys_Upper': float,
+            'Girls_Lower': float,
+            'Girls_Estimate': float,
+            'Girls_Upper': float
+        })
+        
+        # Merge the Excel data and PDF data based on the Year
+        merged_data = pd.merge(df_country, pdf_data, left_on='year', right_on='Year', how='inner')
+        
+        # Perform the comparison
+        comparison_results = merged_data[['year'] + list(comparison_columns.keys())].copy()
+        
+        for excel_col, pdf_col in comparison_columns.items():
+            comparison_results[f'Match_{excel_col}'] = merged_data[excel_col] == merged_data[pdf_col]
+            
+            # Check if there is any mismatch
+            if not comparison_results[f'Match_{excel_col}'].all():
+                all_match = False
+                mismatches = comparison_results[comparison_results[f'Match_{excel_col}'] == False]
+                
+                # Ensure columns exist before printing
+                missing_cols = [col for col in [excel_col, pdf_col] if col not in mismatches.columns]
+                if not missing_cols:
+                    print(f"\nMismatches found for country {country_code} in {excel_col} vs {pdf_col}:")
+                    print(mismatches[['year', excel_col, pdf_col]])
+                else:
+                    print(f"\nMismatches found for country {country_code} {missing_cols}")
+
+            # Store the results in the dictionary
+            all_comparison_results[country_code] = comparison_results
+
+    else:
+        print(f"PDF file for {country_code} not found.")
+# Summary of the overall comparison
+if all_match:
+    print("\nAll data matches across the Excel and PDF files.")
+else:
+    print("\nSome mismatches were found. Please review the output above.")
+
+
+
