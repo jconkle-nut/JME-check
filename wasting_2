@@ -1,0 +1,75 @@
+import pandas as pd
+
+def compare_data(csv_file_path, excel_file_path):
+    # Load the data from the CSV and Excel files
+    csv_data = pd.read_csv(csv_file_path)
+    excel_data = pd.read_excel(excel_file_path)
+
+    # Clean and standardize the data for comparison
+    csv_data.columns = csv_data.columns.str.strip()
+    excel_data.columns = excel_data.columns.str.strip()
+
+    # Convert Year columns to string and strip any whitespace
+    csv_data['Year'] = csv_data['Year'].astype(str).str.strip()
+    excel_data['DataSourceYears'] = excel_data['DataSourceYears'].astype(str).str.strip()
+
+    # Extract the country code from the Filename in the CSV data
+    csv_data['Country_Code'] = csv_data['Filename'].str.extract(r'([A-Z]{3})')
+
+    # Ensure numeric columns are correctly typed
+    csv_data['Prevalence (%)'] = pd.to_numeric(csv_data['Prevalence (%)'], errors='coerce')
+    csv_data['Lower Bound'] = pd.to_numeric(csv_data['Lower Bound'], errors='coerce')
+    csv_data['Upper Bound'] = pd.to_numeric(csv_data['Upper Bound'], errors='coerce')
+
+    excel_data['Prevalence'] = pd.to_numeric(excel_data['Prevalence'], errors='coerce')
+    excel_data['LowerBound'] = pd.to_numeric(excel_data['LowerBound'], errors='coerce')
+    excel_data['UpperBound'] = pd.to_numeric(excel_data['UpperBound'], errors='coerce')
+
+    # Group the data by Country and Year to ensure correct comparison of multiple surveys within the same year
+    grouped_csv = csv_data.groupby(['Country_Code', 'Year'])
+    grouped_excel = excel_data.groupby(['MNF_Country_Code', 'DataSourceYears'])
+
+    # List to store discrepancies
+    discrepancy_details = []
+
+    # Iterate through each group in CSV data
+    for (country, year), csv_group in grouped_csv:
+        if (country, year) in grouped_excel.groups:
+            excel_group = grouped_excel.get_group((country, year))
+            for i in range(min(len(csv_group), len(excel_group))):
+                # Compare the corresponding surveys within the same year
+                csv_row = csv_group.iloc[i]
+                excel_row = excel_group.iloc[i]
+                if compare_values(csv_row['Prevalence (%)'], excel_row['Prevalence']):
+                    discrepancy_details.append((country, year, 'Prevalence', csv_row['Prevalence (%)'], excel_row['Prevalence']))
+                if compare_values(csv_row['Lower Bound'], excel_row['LowerBound']):
+                    discrepancy_details.append((country, year, 'Lower Bound', csv_row['Lower Bound'], excel_row['LowerBound']))
+                if compare_values(csv_row['Upper Bound'], excel_row['UpperBound']):
+                    discrepancy_details.append((country, year, 'Upper Bound', csv_row['Upper Bound'], excel_row['UpperBound']))
+
+    # Convert discrepancy details to DataFrame for easier viewing
+    discrepancy_df = pd.DataFrame(discrepancy_details, columns=['Country', 'Year', 'Column', 'CSV Value', 'Excel Value'])
+
+    return discrepancy_df
+
+# Helper function to compare values considering NaN as equal and treating both NaNs as a match
+def compare_values(val1, val2):
+    if pd.isna(val1) and pd.isna(val2):
+        return False  # No discrepancy if both are NaN
+    return val1 != val2
+
+# Usage example:
+
+# Specify the paths to your CSV and Excel files
+csv_file_path = r'C:\Users\joelc\UNICEF\Data and Analytics Nutrition - Working Space\0. CURRENT\JME\JME profile check\JME check\extracted_data.csv'
+excel_file_path = r'C:\Users\joelc\UNICEF\Data and Analytics Nutrition - Working Space\0. CURRENT\JME\JME profile check\DATA\T8_Wasting_Estimates.xlsx'
+
+# Compare the extracted data with the Excel data
+discrepancy_df = compare_data(csv_file_path, excel_file_path)
+
+# Check if there are discrepancies and print the appropriate message
+if discrepancy_df.empty:
+    print("All data matches between the CSV and Excel files.")
+else:
+    print("Discrepancies found:")
+    print(discrepancy_df)
